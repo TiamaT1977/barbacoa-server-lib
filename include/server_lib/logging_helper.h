@@ -86,6 +86,8 @@ public:
 #define LOG_ERROR(ARG) LOG_LOG(server_lib::logger::level::error, __FILE__, __LINE__, SRV_FUNCTION_NAME_, ARG)
 #define LOG_FATAL(ARG) LOG_LOG(server_lib::logger::level::fatal, __FILE__, __LINE__, SRV_FUNCTION_NAME_, ARG)
 
+#define LOGC_LOG(LEVEL, ARG) LOG_LOG(LEVEL, __FILE__, __LINE__, SRV_FUNCTION_NAME_, SRV_LOG_CONTEXT_ << ARG)
+
 #define LOGC_TRACE(ARG) LOG_TRACE(SRV_LOG_CONTEXT_ << ARG)
 #define LOGC_DEBUG(ARG) LOG_DEBUG(SRV_LOG_CONTEXT_ << ARG)
 #define LOGC_INFO(ARG) LOG_INFO(SRV_LOG_CONTEXT_ << ARG)

@@ -160,6 +160,7 @@ void event_loop::stop()
     SRV_LOGC_TRACE("_thread->joinable()");
     if (_thread && _thread->joinable())
     {
+        SRV_LOGC_TRACE("_thread->join()");
         _thread->join();
     }
 
