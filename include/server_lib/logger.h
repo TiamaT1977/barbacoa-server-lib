@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <string>
 #include <sstream>
@@ -48,6 +49,8 @@ public:
     {
         log_context context;
         std::stringstream message;
+        uint64_t time = 0;
+        std::chrono::steady_clock::time_point steady_time;
     };
 
     using log_handler_type = std::function<void(const log_message&)>;
@@ -76,6 +79,11 @@ public:
         return _appenders.size();
     }
 
+    bool get_force_flush() const
+    {
+        return _force_flush;
+    }
+
     void flush();
 
     void set_force_flush(bool force_flush) { _force_flush = force_flush; }
@@ -89,6 +97,6 @@ private:
 private:
     std::vector<log_handler_type> _appenders;
     int _filter = 0;
-    bool _force_flush = false;
+    std::atomic<bool> _force_flush = false;
 };
 } // namespace server_lib

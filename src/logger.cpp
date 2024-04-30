@@ -123,25 +123,68 @@ void logger::add_boost_log_destination(const SinkTypePtr &sink, const std::strin
         return boost::log::trivial::trace;
     };
 
+    auto level_to_str = [](level lv) -> std::string {
+        switch (lv)
+        {
+        case server_lib::logger::level::fatal:
+            return "fatal";
+        case server_lib::logger::level::error:
+            return "error";
+        case server_lib::logger::level::warning:
+            return "warning";
+        case server_lib::logger::level::info:
+            return "info";
+        case server_lib::logger::level::debug:
+            return "debug";
+        case server_lib::logger::level::trace:
+            return "trace";
+        }
+
+        return "trace";
+    };
+
     namespace expr = boost::log::expressions;
     using namespace boost::log;
 
-    sink->set_formatter(
-        expr::stream << expr::format_date_time<boost::posix_time::ptime>("TimeStamp", dtf)
-        << " [" << std::setw(5) << expr::attr<trivial::severity_level>("Severity") << "]"
-        << expr::smessage);
-
     core::get()->add_sink(sink);
 
-    add_common_attributes();
+    core::get()->add_global_attribute(
+        aux::default_attribute_names::line_id(),
+        attributes::counter< unsigned int >(1));
+    core::get()->add_global_attribute(
+        aux::default_attribute_names::process_id(),
+        attributes::current_process_id());
+#if !defined(BOOST_LOG_NO_THREADS)
+    core::get()->add_global_attribute(
+        aux::default_attribute_names::thread_id(),
+        attributes::current_thread_id());
+#endif
 
     sources::logger lg;
+
+    auto time_to_str = [](int64_t long_date) {
+        char buff[128];
+
+        auto microseconds = long_date % 1000000;
+        auto without_microseconds = long_date / 1000;
+
+        std::chrono::duration<int64_t, std::milli> dur(without_microseconds);
+        auto tp = std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(dur));
+        std::time_t in_time_t = std::chrono::system_clock::to_time_t(tp);
+        strftime(buff, 128, "%Y-%m-%d_%H:%M:%S", localtime(&in_time_t));
+        std::string res_date(buff);
+        res_date += "." + std::to_string(microseconds);
+
+        return res_date;
+    };
 
     auto boost_write = [=](const log_message& msg) {
         BOOST_LOG_SEV(sysLogger::get(), to_boost_level(msg.context.lv))
             << boost::log::add_value("Line", msg.context.line) 
             << boost::log::add_value("File", msg.context.file)
             << boost::log::add_value("Function", msg.context.method)
+            << time_to_str(msg.time)
+            << " [" << level_to_str(msg.context.lv) << "]"
             << "[" << static_cast<unsigned long>(msg.context.thread_info.first)
             << (msg.context.thread_info.second.empty()?(msg.context.thread_info.second):(std::string("-") + msg.context.thread_info.second))
             << "]"

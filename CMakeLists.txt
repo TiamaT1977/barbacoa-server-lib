@@ -1,7 +1,7 @@
 project( BarbacoaServerLib )
 cmake_minimum_required( VERSION 3.0.2 )
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 SET(BOOST_VERSION_MIN "1.58" CACHE STRING "Minimum required Boost Lib version")
 
@@ -26,6 +26,7 @@ include_directories( ${Boost_INCLUDE_DIR} )
 add_subdirectory( libs )
 
 set(SERVER_LIB_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/log_accumulator.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/logger.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/emergency_helper.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/event_loop.cpp"
