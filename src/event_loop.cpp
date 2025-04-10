@@ -157,11 +157,18 @@ void event_loop::stop()
     SRV_LOGC_TRACE("pservice->stop()");
     _pservice->stop();
 
-    SRV_LOGC_TRACE("_thread->joinable()");
-    if (_thread && _thread->joinable())
+    try
     {
-        SRV_LOGC_TRACE("_thread->join()");
-        _thread->join();
+        SRV_LOGC_TRACE("_thread->joinable()");
+        if (_thread && _thread->joinable())
+        {
+            SRV_LOGC_TRACE("_thread->join()");
+            _thread->join();
+        }
+    }
+    catch (const std::exception& e)
+    {
+        SRV_LOGC_ERROR(e.what());
     }
 
     SRV_LOGC_TRACE("_thread.reset()");
