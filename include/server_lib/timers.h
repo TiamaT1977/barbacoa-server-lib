@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <memory>
+#include <atomic>
 
 #include <server_lib/types.h>
 
@@ -14,7 +15,7 @@ class timer
     class id
     {
     public:
-        int value = 0;
+        std::atomic<int> value = 0;
     };
 
 public:
@@ -30,21 +31,29 @@ public:
     }
 
     template <typename DurationType, typename Callback>
-    void start(DurationType&& duration, Callback&& callback)
+    bool start(DurationType&& duration, Callback&& callback)
     {
         int timer_id = ++_current_timer_id->value;
         auto id = _current_timer_id;
+
+        if (timer_id <= 0)
+        {
+            --_current_timer_id->value;
+            return false;
+        }
 
         _el.start_timer(std::forward<DurationType>(duration), [=]() {
             if (id->value == timer_id)
                 callback();
         });
+
+        return true;
     }
 
 
     virtual void stop()
     {
-        ++_current_timer_id->value;
+        _current_timer_id->value = -1;
     }
 
 private:
@@ -68,11 +77,11 @@ public:
     }
 
     template <typename DurationType, typename Callback>
-    void start(DurationType&& duration, Callback&& callback)
+    bool start(DurationType&& duration, Callback&& callback)
     {
-        _timer.start(std::forward<DurationType>(duration), [=]() {
-            this->start(duration, callback);
-            callback();
+        return _timer.start(std::forward<DurationType>(duration), [=]() {
+            if (this->start(duration, callback))
+                callback();
         });
     }
 
