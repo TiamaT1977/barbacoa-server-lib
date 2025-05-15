@@ -4,7 +4,7 @@
 #include <shared_mutex>
 #include <thread>
 
-#include <queue>
+#include <deque>
 
 #include <server_lib/logger.h>
 #include <server_lib/singleton.h>
@@ -13,9 +13,12 @@ namespace server_lib {
 
 class log_accumulator : public singleton<log_accumulator>
 {
-    using logs_thread = std::queue<logger::log_message>;
+    using logs_thread = std::deque<logger::log_message>;
     using logs_thread_ptr = logs_thread*;
     using map_logs = std::map<std::thread::id, logs_thread>;
+
+    using sorted_logs_thread = std::pair<logs_thread::iterator, logs_thread::iterator>;
+    using sorted_logs_threads = std::vector<sorted_logs_thread>;
 
 public:
     virtual ~log_accumulator();
@@ -34,9 +37,10 @@ private:
     void release_logs_pre_init(size_t limit);
 
     void add_log_msg(logger::log_message&& msg);
-    void flush();
+    void flush(bool can_log = true);
 
     logs_thread_ptr get_oldest_log_thread(map_logs& p);
+    void sort_logs_threads(sorted_logs_threads& threads);
 
     map_logs _active_container;
     map_logs _flush_container;

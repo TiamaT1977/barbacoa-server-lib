@@ -4,6 +4,7 @@
 #include <server_lib/logging_helper.h>
 
 #include <iostream>
+#include <list>
 
 namespace server_lib {
 
@@ -20,7 +21,7 @@ log_accumulator::~log_accumulator()
             _thd.join();
     }
 
-    flush();
+    flush(false);
 }
 
 void log_accumulator::init(size_t flush_period_ms, size_t limit_by_thread, size_t throttling_time_ms, size_t pre_init_logs_limit)
@@ -79,7 +80,7 @@ void log_accumulator::put(logger::log_message&& msg)
 
             if (!_new_set_force_flush)
             {
-                flush();
+                flush(false);
                 _new_set_force_flush = true;
             }
         }
@@ -103,7 +104,7 @@ void log_accumulator::add_log_msg(logger::log_message&& msg)
     if (it != _active_container.end())
     {
         auto& queue = it->second;
-        queue.push(std::move(msg));
+        queue.emplace_back(std::move(msg));
         size_t count_by_thread = queue.size();
         _mutex.unlock_shared();
 
@@ -116,7 +117,7 @@ void log_accumulator::add_log_msg(logger::log_message&& msg)
     _mutex.unlock_shared();
 
     _mutex.lock();
-    _active_container[thread_id].push(std::move(msg));
+    _active_container[thread_id].emplace_back(std::move(msg));
     _mutex.unlock();
 }
 
@@ -139,28 +140,32 @@ void log_accumulator::release_logs_pre_init(size_t limit)
         {
             auto thread_ptr = get_oldest_log_thread(_active_container);
             SRV_ASSERT(thread_ptr, "The logs couldn't end");
-            thread_ptr->pop();
+            thread_ptr->pop_front();
         }
     }
 
     _mutex.unlock();
 
-    flush();
+    flush(false);
 }
 
-void log_accumulator::flush()
+void log_accumulator::flush(bool can_log)
 {
     static std::mutex flush_guard;
     const std::lock_guard<std::mutex> lock(flush_guard);
+
+    auto flush_start_time = std::chrono::steady_clock::now();
 
     _mutex.lock();
     _active_container.swap(_flush_container);
     _mutex.unlock();
 
+    sorted_logs_threads sorted_threads;
+
     auto it_thread_logs = _flush_container.begin();
     while (it_thread_logs != _flush_container.end())
     {
-        const auto& thread_logs = it_thread_logs->second;
+        auto& thread_logs = it_thread_logs->second;
 
         if (thread_logs.empty())
         {
@@ -168,16 +173,57 @@ void log_accumulator::flush()
             continue;
         }
 
-        if (thread_logs.size() >= _limit_by_thread)
-            LOG_ERROR("Thread " << thread_logs.front().context.thread_info.first << " spams logs");
+        if (thread_logs.size() >= _limit_by_thread && can_log)
+            LOG_ERROR("Thread " << thread_logs.front().context.thread_info.first << " spams logs: " << thread_logs.size());
 
+        sorted_threads.emplace_back(std::make_pair(thread_logs.begin(), thread_logs.end()));
         it_thread_logs++;
     }
 
-    while (auto thread_ptr = get_oldest_log_thread(_flush_container))
+    while (!sorted_threads.empty())
     {
-        logger::instance().write(thread_ptr->front());
-        thread_ptr->pop();
+        // sort threads by oldest message time
+        sort_logs_threads(sorted_threads);
+
+        auto& cur_thread = sorted_threads.back();
+        auto* next_thread = (sorted_threads.size() > 1) ? &sorted_threads[sorted_threads.size() - 2] : nullptr;
+        auto next_thread_time = next_thread ? next_thread->first->steady_time : flush_start_time;
+
+        while (cur_thread.first != cur_thread.second && cur_thread.first->steady_time <= next_thread_time)
+        {
+            logger::instance().write(*cur_thread.first);
+            cur_thread.first++;
+        }
+
+        // we know that next thread first message will be written at first - so do it here
+        if (next_thread)
+        {
+            logger::instance().write(*next_thread->first);
+            next_thread->first++;
+        }
+
+        // remove empty thread(s)
+        auto it = sorted_threads.end() - (next_thread ? 2 : 1);
+        while (it != sorted_threads.end())
+        {
+            if (it->first == it->second) // this thread is finished - remove it from the list
+                it = sorted_threads.erase(it);
+            else
+                it++;
+        }
+    }
+
+    // cleanup all flushed threads
+    for (auto& it_thread : _flush_container)
+    {
+        it_thread.second.clear();
+    }
+
+    if (can_log)
+    {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed_ms = (size_t)std::chrono::duration_cast<std::chrono::milliseconds>(now - flush_start_time).count();
+        LOG_TRACE("log_accumulator::flush took " << elapsed_ms << " ms");
     }
 }
 
@@ -199,6 +245,15 @@ log_accumulator::logs_thread_ptr log_accumulator::get_oldest_log_thread(map_logs
     }
 
     return thread_ptr;
+}
+
+void log_accumulator::sort_logs_threads(sorted_logs_threads& threads)
+{
+    // desc by message steady_time
+    std::sort(threads.begin(), threads.end(),
+              [](const sorted_logs_thread& thread1, const sorted_logs_thread& thread2) {
+                  return thread1.first->steady_time > thread2.first->steady_time;
+              });
 }
 
 } // namespace server_lib
