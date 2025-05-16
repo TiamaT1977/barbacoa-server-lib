@@ -43,6 +43,11 @@ void log_accumulator::init(size_t flush_period_ms, size_t limit_by_thread, size_
     release_logs_pre_init(pre_init_logs_limit);
 
     _thd = std::thread([this]() {
+
+#if defined(SERVER_LIB_PLATFORM_LINUX)
+        pthread_setname_np(pthread_self(), "logs-accum");
+#endif
+
         while (_execute.load())
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(_flush_period_ms));
