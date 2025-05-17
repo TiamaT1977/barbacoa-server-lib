@@ -159,13 +159,13 @@ void log_accumulator::flush(bool can_log)
     static std::mutex flush_guard;
     const std::lock_guard<std::mutex> lock(flush_guard);
 
-    auto flush_start_time = std::chrono::steady_clock::now();
-
     _mutex.lock();
     _active_container.swap(_flush_container);
     _mutex.unlock();
 
+    auto flush_start_time = std::chrono::steady_clock::now();
     sorted_logs_threads sorted_threads;
+    size_t total_num_messages = 0;
 
     auto it_thread_logs = _flush_container.begin();
     while (it_thread_logs != _flush_container.end())
@@ -178,12 +178,16 @@ void log_accumulator::flush(bool can_log)
             continue;
         }
 
+        total_num_messages += thread_logs.size();
+
         if (thread_logs.size() >= _limit_by_thread && can_log)
             LOG_ERROR("Thread " << thread_logs.front().context.thread_info.first << " spams logs: " << thread_logs.size());
 
         sorted_threads.emplace_back(std::make_pair(thread_logs.begin(), thread_logs.end()));
         it_thread_logs++;
     }
+
+    auto messages_to_write = total_num_messages;
 
     while (!sorted_threads.empty())
     {
@@ -194,10 +198,14 @@ void log_accumulator::flush(bool can_log)
         auto* next_thread = (sorted_threads.size() > 1) ? &sorted_threads[sorted_threads.size() - 2] : nullptr;
         auto next_thread_time = next_thread ? next_thread->first->steady_time : flush_start_time;
 
+        bool written_any = false;
+
         while (cur_thread.first != cur_thread.second && cur_thread.first->steady_time <= next_thread_time)
         {
             logger::instance().write(*cur_thread.first);
             cur_thread.first++;
+            messages_to_write--;
+            written_any = true;
         }
 
         // we know that next thread first message will be written at first - so do it here
@@ -205,6 +213,8 @@ void log_accumulator::flush(bool can_log)
         {
             logger::instance().write(*next_thread->first);
             next_thread->first++;
+            messages_to_write--;
+            written_any = true;
         }
 
         // remove empty thread(s)
@@ -216,6 +226,14 @@ void log_accumulator::flush(bool can_log)
             else
                 it++;
         }
+
+        if (!written_any)
+        {
+            if (can_log)
+                LOG_ERROR("Logs flush is stuck! Breaking.");
+
+            break;
+        }
     }
 
     // cleanup all flushed threads
@@ -226,9 +244,12 @@ void log_accumulator::flush(bool can_log)
 
     if (can_log)
     {
+        if (messages_to_write != 0)
+            LOG_ERROR("log_accumulator::flush - not all messages were wtitten: " << messages_to_write);
+
         auto now = std::chrono::steady_clock::now();
         auto elapsed_ms = (size_t)std::chrono::duration_cast<std::chrono::milliseconds>(now - flush_start_time).count();
-        LOG_TRACE("log_accumulator::flush took " << elapsed_ms << " ms");
+        LOG_TRACE("log_accumulator::flush took " << elapsed_ms << " ms (" << _flush_container.size() << " threads, " << total_num_messages << " rows)");
     }
 }
 
