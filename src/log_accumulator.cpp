@@ -80,6 +80,9 @@ void log_accumulator::put(logger::log_message&& msg)
     {
         if (!_new_set_force_flush)
         {
+            if (_thd.get_id() == std::this_thread::get_id())
+                return; // skip here calls from flush() to avoid deadlocks
+
             static std::mutex guard;
             const std::lock_guard<std::mutex> lock(guard);
 
