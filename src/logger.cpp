@@ -174,7 +174,8 @@ void logger::add_boost_log_destination(const SinkTypePtr &sink, const std::strin
         auto seconds = long_date / 1000000;
 
         std::stringstream ss;
-        ss << std::put_time(std::localtime(&seconds), "%Y-%m-%d_%H:%M:%S");
+        tm buf;
+        ss << std::put_time(localtime_r(&seconds, &buf), "%Y-%m-%d_%H:%M:%S");
         ss << "." << std::setfill('0') << std::setw(6) << microseconds;
         return ss.str();
     };
