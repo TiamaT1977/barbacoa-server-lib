@@ -205,7 +205,7 @@ void log_accumulator::flush(bool can_log)
 
         while (cur_thread.first != cur_thread.second && cur_thread.first->steady_time <= next_thread_time)
         {
-            logger::instance().write(*cur_thread.first);
+            write_message_with_time_str(*cur_thread.first);
             cur_thread.first++;
             messages_to_write--;
             written_any = true;
@@ -214,7 +214,7 @@ void log_accumulator::flush(bool can_log)
         // we know that next thread first message will be written at first - so do it here
         if (next_thread)
         {
-            logger::instance().write(*next_thread->first);
+            write_message_with_time_str(*next_thread->first);
             next_thread->first++;
             messages_to_write--;
             written_any = true;
@@ -283,6 +283,37 @@ void log_accumulator::sort_logs_threads(sorted_logs_threads& threads)
               [](const sorted_logs_thread& thread1, const sorted_logs_thread& thread2) {
                   return thread1.first->steady_time > thread2.first->steady_time;
               });
+}
+
+void log_accumulator::write_message_with_time_str(logger::log_message& msg)
+{
+    static int64_t time_sec = 0;
+    static char time_str_sec[32] = { 0 };
+
+    static size_t time_msec = 0;
+    static char time_str_msec[32] = { 0 };
+
+    static constexpr size_t max_len = sizeof(time_str_sec) - 1;
+
+    int64_t secs = msg.time / 1000000;
+    if (secs != time_sec)
+    {
+        tm buf;
+        std::strftime(time_str_sec, max_len, "%Y-%m-%d_%H:%M:%S", localtime_r(&secs, &buf));
+        time_sec = secs;
+    }
+
+    size_t milli = msg.time / 1000;
+    if (milli != time_msec)
+    {
+        snprintf(time_str_msec, max_len, "%.26s.%.3lu", time_str_sec, milli % 1000);
+        time_msec = milli;
+    }
+
+    size_t micro = msg.time % 1000;
+    snprintf(msg.time_str, max_len, "%.27s%.3lu", time_str_msec, micro);
+
+    logger::instance().write(msg);
 }
 
 } // namespace server_lib

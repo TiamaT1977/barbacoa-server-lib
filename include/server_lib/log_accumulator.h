@@ -42,6 +42,8 @@ private:
     logs_thread_ptr get_oldest_log_thread(map_logs& p);
     void sort_logs_threads(sorted_logs_threads& threads);
 
+    static void write_message_with_time_str(logger::log_message& msg);
+
     map_logs _active_container;
     map_logs _flush_container;
 

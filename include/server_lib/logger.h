@@ -50,6 +50,7 @@ public:
         log_context context;
         std::stringstream message;
         uint64_t time = 0;
+        char time_str[32] = { 0 };
         std::chrono::steady_clock::time_point steady_time;
     };
 

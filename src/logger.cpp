@@ -185,7 +185,7 @@ void logger::add_boost_log_destination(const SinkTypePtr &sink, const std::strin
             << boost::log::add_value("Line", msg.context.line) 
             << boost::log::add_value("File", msg.context.file)
             << boost::log::add_value("Function", msg.context.method)
-            << time_to_str(msg.time)
+            << ((msg.time_str[0]==0)  ? time_to_str(msg.time).c_str() : msg.time_str)
             << " [" << level_to_str(msg.context.lv) << "]"
             << "[" << static_cast<unsigned long>(msg.context.thread_info.first)
             << (msg.context.thread_info.second.empty()?(msg.context.thread_info.second):(std::string("-") + msg.context.thread_info.second))
